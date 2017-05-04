@@ -280,6 +280,8 @@ struct parameters {
 	int32_t range_aid{0};			///< allow switching primary height source to range finder if certian conditions are met
 	float range_aid_innov_gate{1.0f}; 	///< gate size used for innovation consistency checks for range aid fusion
 	float range_cos_max_tilt{0.7071f};	///< cosine of the maximum tilt angle from the vertical that permits use of range finder data
+	float range_tilt_error{0.05f};		///< total tilt uncertainty in range finder alignment (rad)
+	float range_cos_max_tilt{0.5f};		///< cosine of the maximum tilt angle from the vertical that permits use of range finder data
 
 	// vision position fusion
 	float ev_innov_gate{5.0f};		///< vision estimator fusion innovation consistency gate size (STD)
