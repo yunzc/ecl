@@ -252,38 +252,27 @@ void Ekf::controlExternalVisionFusion()
 			_ev_sample_delayed.posNED(1) -= pos_offset_earth(1);
 			_ev_sample_delayed.posNED(2) -= pos_offset_earth(2);
 
-			// Use an incremental position fusion method for EV data if using GPS or if the observations are not in NED
-			if (_control_status.flags.gps || (_params.fusion_mode & MASK_ROTATE_EV)) {
+			// Use EV rotation matrix if EV is NOT in NED and we don't use EV yaw
+			if ((_params.fusion_mode & MASK_ROTATE_EV) && !(_params.fusion_mode & MASK_USE_EVYAW)) {
 				_fuse_hpos_as_odom = true;
 			} else {
 				_fuse_hpos_as_odom = false;
 			}
 
-			if(_fuse_hpos_as_odom) {
-				if(!_hpos_prev_available) {
-					// no previous observation available to calculate position change
-					_fuse_pos = false;
-					_hpos_prev_available = true;
+			if (_fuse_hpos_as_odom) {
+				Vector3f ev_pos_ned = _ev_rot_mat * _ev_sample_delayed.posNED;
 
-				} else {
-					// calculate the change in position since the last measurement
-					Vector3f ev_delta_pos = _ev_sample_delayed.posNED - _pos_meas_prev;
-
-					// rotate measurement into body frame if required
-					if (_params.fusion_mode & MASK_ROTATE_EV) {
-						ev_delta_pos = _ev_rot_mat * ev_delta_pos;
-					}
-
-					// use the change in position since the last measurement
-					_vel_pos_innov[3] = _state.pos(0) - _hpos_pred_prev(0) - ev_delta_pos(0);
-					_vel_pos_innov[4] = _state.pos(1) - _hpos_pred_prev(1) - ev_delta_pos(1);
+				if (!_ev_hpos_prev_available) {
+					// set an offset if we weren't using EV before
+					_ev_offset(0) = _state.pos(0) - ev_pos_ned(0);
+					_ev_offset(1) = _state.pos(1) - ev_pos_ned(1);
+					ECL_INFO("setting _ev_offset to (%f, %f)\n", (double)_ev_offset(0), (double)_ev_offset(1));
+					_ev_hpos_prev_available = true;
 
 				}
 
-				// record observation and estimate for use next time
-				_pos_meas_prev = _ev_sample_delayed.posNED;
-				_hpos_pred_prev(0) = _state.pos(0);
-				_hpos_pred_prev(1) = _state.pos(1);
+				_vel_pos_innov[3] = _state.pos(0) - ev_pos_ned(0) - _ev_offset(0);
+				_vel_pos_innov[4] = _state.pos(1) - ev_pos_ned(1) - _ev_offset(1);
 
 			} else {
 				// use the absolute position
@@ -314,6 +303,7 @@ void Ekf::controlExternalVisionFusion()
 	} else if (_control_status.flags.ev_pos && (_time_last_imu - _time_last_ext_vision > (uint64_t)5e6)) {
 		// Turn off EV fusion mode if no data has been received
 		_control_status.flags.ev_pos = false;
+		_ev_hpos_prev_available = false;
 		ECL_INFO("EKF External Vision Data Stopped");
 
 	}
