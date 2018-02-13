@@ -430,7 +430,8 @@ void EstimatorInterface::setExtVisionData(uint64_t time_usec, ext_vision_message
 
 		// copy required data
 		ev_sample_new.angErr = evdata->angErr;
-		ev_sample_new.posErr = evdata->posErr;
+		ev_sample_new.hposErr = evdata->hposErr;
+		ev_sample_new.vposErr = evdata->vposErr;
 		ev_sample_new.quat = evdata->quat;
 		ev_sample_new.posNED = evdata->posNED;
 

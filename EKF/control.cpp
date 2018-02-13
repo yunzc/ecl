@@ -292,7 +292,7 @@ void Ekf::controlExternalVisionFusion()
 			}
 
 			// observation 1-STD error
-			_posObsNoiseNE = fmaxf(_ev_sample_delayed.posErr, 0.01f);
+			_posObsNoiseNE = fmaxf(_ev_sample_delayed.hposErr, 0.01f);
 
 			// innovation gate size
 			_posInnovGateNE = fmaxf(_params.ev_innov_gate, 1.0f);

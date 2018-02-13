@@ -119,7 +119,7 @@ bool Ekf::resetPosition()
 		_state.pos(1) = _ev_sample_delayed.posNED(1);
 
 		// use EV accuracy to reset variances
-		setDiag(P,7,8,sq(_ev_sample_delayed.posErr));
+		setDiag(P,7,8,sq(_ev_sample_delayed.hposErr));
 
 	} else {
 		return false;
