@@ -202,6 +202,51 @@ if exist('SH_TAS','var')
     fprintf(fid,'\n');
     
 end
+%% Write equations for true airspeed data fusion along body x
+if exist('SH_TASX','var')
+    
+    fprintf(fid,'\n');
+    fprintf(fid,'SH_TASX = zeros(%d,1);\n',numel(SH_TASX));
+    for rowIndex = 1:numel(SH_TASX)
+        string = char(SH_TASX(rowIndex,1));
+        fprintf(fid,'SH_TASX(%d) = %s;\n',rowIndex,string);
+    end
+    
+    [nRow,nCol] = size(H_TASX);
+    fprintf(fid,'\n');
+    fprintf(fid,'H_TASX = zeros(1,%d);\n',nCol);
+    for rowIndex = 1:nRow
+        for colIndex = 1:nCol
+            string = char(H_TASX(rowIndex,colIndex));
+            % don't write out a zero-assignment
+            if ~strcmpi(string,'0')
+                fprintf(fid,'H_TASX(1,%d) = %s;\n',colIndex,string);
+            end
+        end
+    end
+    fprintf(fid,'\n');
+    
+    fprintf(fid,'\n');
+    fprintf(fid,'SK_TASX = zeros(%d,1);\n',numel(SK_TASX));
+    for rowIndex = 1:numel(SK_TASX)
+        string = char(SK_TASX(rowIndex,1));
+        fprintf(fid,'SK_TASX(%d) = %s;\n',rowIndex,string);
+    end
+    fprintf(fid,'\n');
+    
+    [nRow,nCol] = size(K_TASX);
+    fprintf(fid,'\n');
+    fprintf(fid,'Kfusion = zeros(%d,1);\n',nRow,nCol);
+    for rowIndex = 1:nRow
+        string = char(K_TASX(rowIndex,1));
+        % don't write out a zero-assignment
+        if ~strcmpi(string,'0')
+            fprintf(fid,'Kfusion(%d) = %s;\n',rowIndex,string);
+        end
+    end
+    fprintf(fid,'\n');
+    
+end
 %% Write equations for sideslip data fusion
 if exist('SH_BETA','var')
     

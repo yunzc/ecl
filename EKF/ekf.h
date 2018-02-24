@@ -460,6 +460,9 @@ private:
 	// fuse airspeed measurement
 	void fuseAirspeed();
 
+	// fuse airspeed along body x measurement
+	void fuseAirspeedBodyX();
+
 	// fuse synthetic zero sideslip measurement
 	void fuseSideslip();
 

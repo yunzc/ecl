@@ -1097,7 +1097,7 @@ void Ekf::controlAirDataFusion()
 
 		}
 
-		fuseAirspeed();
+		fuseAirspeedBodyX();
 
 	}
 }

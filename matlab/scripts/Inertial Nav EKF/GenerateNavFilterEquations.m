@@ -190,6 +190,21 @@ save('Airspeed.mat','SH_TAS','H_TAS','SK_TAS','K_TAS');
 clear all;
 reset(symengine);
 
+%% derive equations for fusion of true airspeed measurements along body x
+load('StatePrediction.mat');
+% calculate wind relative velocities in nav frame and rotate into body frame
+Vbw = transpose(Tbn)*[(vn-vwn);(ve-vwe);vd];
+VtasPred = Vbw(1); % predicted measurement
+H_TASX = jacobian(VtasPred,stateVector); % measurement Jacobian
+[H_TASX,SH_TASX]=OptimiseAlgebra(H_TASX,'SH_TASX'); % optimise processing
+K_TASX = (P*transpose(H_TASX))/(H_TASX*P*transpose(H_TASX) + R_TAS);
+[K_TASX,SK_TASX]=OptimiseAlgebra(K_TASX,'SK_TASX'); % Kalman gain vector
+
+% save equations and reset workspace
+save('AirspeedX.mat','SH_TASX','H_TASX','SK_TASX','K_TASX');
+clear all;
+reset(symengine);
+
 %% derive equations for fusion of angle of sideslip measurements
 load('StatePrediction.mat');
 
@@ -478,11 +493,12 @@ reset(symengine);
 %% Save output and convert to m and c code fragments
 
 % load equations for predictions and updates
-load('StateAndCovariancePrediction.mat');
+% load('StateAndCovariancePrediction.mat');
 load('Airspeed.mat');
-load('Sideslip.mat');
-load('Magnetometer.mat');
-load('Drag.mat');
+load('AirspeedX.mat');
+% load('Sideslip.mat');
+% load('Magnetometer.mat');
+% load('Drag.mat');
 
 fileName = strcat('SymbolicOutput',int2str(nStates),'.mat');
 save(fileName);
