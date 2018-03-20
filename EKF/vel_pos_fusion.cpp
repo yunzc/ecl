@@ -222,6 +222,16 @@ void Ekf::fuseVelPosHeight()
 			Kfusion[row] = P[row][state_index] / _vel_pos_innov_var[obs_index];
 		}
 
+		// When 3 axis IMU delta velocity bias estimation is inhibited, only allow direct position or velocity
+		// measurements aligned with measurement axis to modify the bias estimate for the active axes.
+		if (_params.fusion_mode & MASK_INHIBIT_ACC_BIAS) {
+			for (uint8_t index=0; index<=2; index++) {
+				if (((obs_index != 2) && (obs_index != 5)) || _accel_bias_inhibit[index]) {
+					Kfusion[index+13] = 0.0f;
+				}
+			}
+		}
+
 		// update covarinace matrix via Pnew = (I - KH)P
 		float KHP[_k_num_states][_k_num_states];
 		for (unsigned row = 0; row < _k_num_states; row++) {

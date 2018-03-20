@@ -176,7 +176,7 @@ struct auxVelSample {
 // Bit locations for fusion_mode
 #define MASK_USE_GPS    (1<<0)		///< set to true to use GPS data
 #define MASK_USE_OF     (1<<1)		///< set to true to use optical flow data
-#define MASK_INHIBIT_ACC_BIAS (1<<2)	///< set to true to inhibit estimation of accelerometer delta velocity bias
+#define MASK_INHIBIT_ACC_BIAS (1<<2)	///< set to true to inhibit 3-axis estimation of accelerometer delta velocity bias
 #define MASK_USE_EVPOS	(1<<3)		///< set to true to use external vision NED position data
 #define MASK_USE_EVYAW  (1<<4)		///< set to true to use exernal vision quaternion data for yaw
 #define MASK_USE_DRAG  (1<<5)		///< set to true to use the multi-rotor drag model to estimate wind

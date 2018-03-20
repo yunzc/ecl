@@ -157,33 +157,53 @@ void Ekf::predictCovariance()
 	// convert rate of change of accelerometer bias (m/s**3) as specified by the parameter to an expected change in delta velocity (m/s) since the last update
 	float d_vel_bias_sig = dt * dt * math::constrain(_params.accel_bias_p_noise, 0.0f, 1.0f);
 
-	// inhibit learning of imu acccel bias if the manoeuvre levels are too high to protect against the effect of sensor nonlinearities or bad accel data is detected
+	// if the user has inhibited learning, delta velocity bias for an axis will only be updated when the axis is close to vertical
+	// the vehicle is not maneouvring and the vertical position or velocity is directly observable
+	float tilt_threshold[3];
+	bool axis_inhibited[3];
+	for (uint8_t index=0; index<=2; index++) {
+		if (_accel_bias_inhibit[index]) {
+			tilt_threshold[index] = 0.95f;
+		} else {
+			tilt_threshold[index] = 0.97f;
+		}
+
+		axis_inhibited[index] = ((fabsf(_R_to_earth(2,index)) <= tilt_threshold[index]) && (_params.fusion_mode & MASK_INHIBIT_ACC_BIAS));
+
+		if (axis_inhibited[index]) {
+			if (!_accel_bias_inhibit[index]) {
+				_prev_dvel_bias_var(index) = P[13+index][13+index];
+			}
+			_accel_bias_inhibit[index] = true;
+		}
+	}
+
+	// inhibit learning of imu acccel bias if the manoeuvre levels are too high to protect against the effect of sensor
+	// nonlinearities or bad accel data is detected
+	// inhibited axes must be respected
 	float alpha = 1.0f - math::constrain((dt / _params.acc_bias_learn_tc), 0.0f, 1.0f);
 	_ang_rate_mag_filt = fmaxf(_imu_sample_delayed.delta_ang.norm(), alpha * _ang_rate_mag_filt);
 	_accel_mag_filt = fmaxf(_imu_sample_delayed.delta_vel.norm(), alpha * _accel_mag_filt);
+
 	if (_ang_rate_mag_filt > dt * _params.acc_bias_learn_gyr_lim
 			|| _accel_mag_filt > dt * _params.acc_bias_learn_acc_lim
 			|| _bad_vert_accel_detected) {
-		// store the bias state variances to be reinstated later
-		if (!_accel_bias_inhibit) {
-			_prev_dvel_bias_var(0) = P[13][13];
-			_prev_dvel_bias_var(1) = P[14][14];
-			_prev_dvel_bias_var(2) = P[15][15];
+		// store the bias state variance for any active axes so they can  be reinstated later
+		for (uint8_t index=0; index<=2; index++) {
+			if (!_accel_bias_inhibit[index]) {
+				_prev_dvel_bias_var(index) = P[13+index][13+index];
+				_accel_bias_inhibit[index] = true;
+			}
 		}
-		_accel_bias_inhibit = true;
 	} else {
-		if (_accel_bias_inhibit) {
-			// reinstate the bias state variances
-			P[13][13] = _prev_dvel_bias_var(0);
-			P[14][14] = _prev_dvel_bias_var(1);
-			P[15][15] = _prev_dvel_bias_var(2);
-		} else {
-			// store the bias state variances to be reinstated later
-			_prev_dvel_bias_var(0) = P[13][13];
-			_prev_dvel_bias_var(1) = P[14][14];
-			_prev_dvel_bias_var(2) = P[15][15];
+		// store the bias state variances to be reinstated later
+		for (uint8_t index=0; index<=2; index++) {
+			if (_accel_bias_inhibit[index] && !axis_inhibited[index]) {
+				// reinstate the bias state variance for any viable inactive axes
+				P[13+index][13+index] = _prev_dvel_bias_var(index);
+				_accel_bias_inhibit[index] = false;
+			}
 		}
-		_accel_bias_inhibit = false;
 	}
 
 	// Don't continue to grow the earth field variances if they are becoming too large or we are not doing 3-axis fusion as this can make the covariance matrix badly conditioned
@@ -408,7 +428,7 @@ void Ekf::predictCovariance()
 	}
 
 	// Don't calculate these covariance terms if IMU delta velocity bias estimation is inhibited
-	if (!(_params.fusion_mode & MASK_INHIBIT_ACC_BIAS) && !_accel_bias_inhibit) {
+	if (!_accel_bias_inhibit[0]) {
 
 		// calculate variances and upper diagonal covariances for IMU delta velocity bias states
 		nextP[0][13] = P[0][13] + P[1][13]*SF[9] + P[2][13]*SF[11] + P[3][13]*SF[10] + P[10][13]*SF[14] + P[11][13]*SF[15] + P[12][13]*SPP[10];
@@ -425,6 +445,21 @@ void Ekf::predictCovariance()
 		nextP[11][13] = P[11][13];
 		nextP[12][13] = P[12][13];
 		nextP[13][13] = P[13][13];
+		nextP[13][14] = P[13][14];
+		nextP[13][15] = P[13][15];
+
+		// add process noise that is not from the IMU
+		nextP[13][13] += process_noise[13];
+	} else {
+		// Inhibit delta velocity bias learning by zeroing the covariance terms
+		zeroRows(nextP,13,13);
+		zeroCols(nextP,13,13);
+	}
+
+	// Don't calculate these covariance terms if IMU delta velocity bias estimation is inhibited
+	if (!_accel_bias_inhibit[1]) {
+
+		// calculate variances and upper diagonal covariances for IMU delta velocity bias states
 		nextP[0][14] = P[0][14] + P[1][14]*SF[9] + P[2][14]*SF[11] + P[3][14]*SF[10] + P[10][14]*SF[14] + P[11][14]*SF[15] + P[12][14]*SPP[10];
 		nextP[1][14] = P[1][14] + P[0][14]*SF[8] + P[2][14]*SF[7] + P[3][14]*SF[11] - P[12][14]*SF[15] + P[11][14]*SPP[10] - (P[10][14]*q0)/2;
 		nextP[2][14] = P[2][14] + P[0][14]*SF[6] + P[1][14]*SF[10] + P[3][14]*SF[8] + P[12][14]*SF[14] - P[10][14]*SPP[10] - (P[11][14]*q0)/2;
@@ -440,6 +475,18 @@ void Ekf::predictCovariance()
 		nextP[12][14] = P[12][14];
 		nextP[13][14] = P[13][14];
 		nextP[14][14] = P[14][14];
+		nextP[14][15] = P[14][15];
+
+		// add process noise that is not from the IMU
+		nextP[14][14] += process_noise[14];
+	} else {
+		// Inhibit delta velocity bias learning by zeroing the covariance terms
+		zeroRows(nextP,14,14);
+		zeroCols(nextP,14,14);
+	}
+
+	// Don't calculate these covariance terms if IMU delta velocity bias estimation is inhibited
+	if (!_accel_bias_inhibit[2]) {
 		nextP[0][15] = P[0][15] + P[1][15]*SF[9] + P[2][15]*SF[11] + P[3][15]*SF[10] + P[10][15]*SF[14] + P[11][15]*SF[15] + P[12][15]*SPP[10];
 		nextP[1][15] = P[1][15] + P[0][15]*SF[8] + P[2][15]*SF[7] + P[3][15]*SF[11] - P[12][15]*SF[15] + P[11][15]*SPP[10] - (P[10][15]*q0)/2;
 		nextP[2][15] = P[2][15] + P[0][15]*SF[6] + P[1][15]*SF[10] + P[3][15]*SF[8] + P[12][15]*SF[14] - P[10][15]*SPP[10] - (P[11][15]*q0)/2;
@@ -458,14 +505,11 @@ void Ekf::predictCovariance()
 		nextP[15][15] = P[15][15];
 
 		// add process noise that is not from the IMU
-		for (unsigned i = 13; i <= 15; i++) {
-			nextP[i][i] += process_noise[i];
-		}
-
+		nextP[15][15] += process_noise[15];
 	} else {
 		// Inhibit delta velocity bias learning by zeroing the covariance terms
-		zeroRows(nextP,13,15);
-		zeroCols(nextP,13,15);
+		zeroRows(nextP,15,15);
+		zeroCols(nextP,15,15);
 	}
 
 	// Don't do covariance prediction on magnetic field states unless we are using 3-axis fusion
@@ -727,11 +771,8 @@ void Ekf::fixCovarianceErrors()
 	// the following states are optional and are deactivaed when not required
 	// by ensuring the corresponding covariance matrix values are kept at zero
 
-	// accelerometer bias states
-	if ((_params.fusion_mode & MASK_INHIBIT_ACC_BIAS) || _accel_bias_inhibit) {
-		zeroRows(P,13,15);
-		zeroCols(P,13,15);
-	} else {
+	// The full delta velocity bias covariance checking method requires all three axes to be active
+	if (!_accel_bias_inhibit[0] && !_accel_bias_inhibit[1] && !_accel_bias_inhibit[2]) {
 		// Find the maximum delta velocity bias state variance and request a covariance reset if any variance is below the safe minimum
 		const float minSafeStateVar = 1e-9f;
 		float maxStateVar = minSafeStateVar;
@@ -816,6 +857,15 @@ void Ekf::fixCovarianceErrors()
 			makeSymmetrical(P,13,15);
 		}
 
+	} else {
+		// perform basic bound checking for the active state and force symmetry
+		for (uint8_t index=0; index<=2; index++) {
+			if (!_accel_bias_inhibit[index]) {
+				uint8_t stateIndex = index+13;
+				P[stateIndex][stateIndex] = math::constrain(P[stateIndex][stateIndex], 1E-9f, sq(_gravity_mss * _dt_ekf_avg));
+				makeSymmetrical(P,stateIndex,stateIndex);
+			}
+		}
 	}
 
 	// magnetic field states
