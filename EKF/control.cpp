@@ -1137,7 +1137,7 @@ void Ekf::controlBetaFusion()
 
 void Ekf::controlDragFusion()
 {
-	if (_params.fusion_mode & MASK_USE_DRAG) {
+	if ((_params.fusion_mode & MASK_USE_DRAG) && !_is_dead_reckoning) {
 		if (_control_status.flags.in_air) {
 			if (!_control_status.flags.wind) {
 				// reset the wind states and covariances when starting drag accel fusion
