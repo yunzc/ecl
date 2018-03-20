@@ -39,6 +39,7 @@
 #pragma once
 
 #include <mathlib/mathlib.h>
+#include <ecl.h>
 
 class WindEstimator
 {
@@ -52,7 +53,7 @@ public:
 	WindEstimator(WindEstimator &&) = delete;
 	WindEstimator &operator=(WindEstimator &&) = delete;
 
-	void update(uint64_t time_now);
+	bool update(uint64_t time_now);
 
 	void fuse_airspeed(uint64_t time_now, float true_airspeed, const matrix::Vector3f &velI,
 			   const matrix::Vector2f &velIvar);

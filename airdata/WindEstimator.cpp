@@ -38,9 +38,15 @@
 
 #include "WindEstimator.hpp"
 
+using matrix::Dcmf;
+using matrix::Quatf;
+using matrix::Matrix3f;
+using matrix::Scalarf;
+using matrix::Vector2f;
+using matrix::Vector3f;
 
 bool
-WindEstimator::initialise(const matrix::Vector3f &velI, const matrix::Vector2f &velIvar, const float tas_meas)
+WindEstimator::initialise(const Vector3f &velI, const Vector2f &velIvar, const float tas_meas)
 {
 	// do no initialise if ground velocity is low
 	// this should prevent the filter from initialising on the ground
@@ -68,7 +74,7 @@ WindEstimator::initialise(const matrix::Vector3f &velI, const matrix::Vector2f &
 	float L5 = 1.0f / sqrtf(L2);
 	float L6 = -L5 * tas_meas;
 
-	matrix::Matrix3f L;
+	Matrix3f L;
 	L.setZero();
 	L(0, 0) = L4;
 	L(0, 1) = L0 * L3 + L6;
@@ -92,11 +98,11 @@ WindEstimator::initialise(const matrix::Vector3f &velI, const matrix::Vector2f &
 	return true;
 }
 
-void
+bool
 WindEstimator::update(uint64_t time_now)
 {
 	if (!_initialised) {
-		return;
+		return false;
 	}
 
 	// run covariance prediction at 1Hz
@@ -105,21 +111,20 @@ WindEstimator::update(uint64_t time_now)
 			_time_last_update = time_now;
 		}
 
-		return;
+		return false;
 	}
 
-	float dt = (float)(time_now - _time_last_update) * 1e-6f;
+	const float dt = ecl_elapsed_time(&_time_last_update) * 1e-6f;
 	_time_last_update = time_now;
 
-	float q_w = _wind_p_var;
-	float q_k_tas = _tas_scale_p_var;
+	const float q_w = _wind_p_var;
+	const float q_k_tas = _tas_scale_p_var;
 
-	float SPP0 = dt * dt;
-	float SPP1 = SPP0 * q_w;
-	float SPP2 = SPP1 + _P(0, 1);
+	const float SPP0 = dt * dt;
+	const float SPP1 = SPP0 * q_w;
+	const float SPP2 = SPP1 + _P(0, 1);
 
-	matrix::Matrix3f P_next;
-
+	Matrix3f P_next;
 	P_next(0, 0) = SPP1 + _P(0, 0);
 	P_next(0, 1) = SPP2;
 	P_next(0, 2) = _P(0, 2);
@@ -130,17 +135,19 @@ WindEstimator::update(uint64_t time_now)
 	P_next(2, 1) = _P(1, 2);
 	P_next(2, 2) = SPP0 * q_k_tas + _P(2, 2);
 	_P = P_next;
+
+	return true;
 }
 
 void
-WindEstimator::fuse_airspeed(uint64_t time_now, const float true_airspeed, const matrix::Vector3f &velI,
-			     const matrix::Vector2f &velIvar)
+WindEstimator::fuse_airspeed(uint64_t time_now, const float true_airspeed, const Vector3f &velI,
+			     const Vector2f &velIvar)
 {
-	matrix::Vector2f velIvar_constrained = { math::max(0.01f, velIvar(0)), math::max(0.01f, velIvar(1)) };
+	Vector2f velIvar_constrained = { math::max(0.01f, velIvar(0)), math::max(0.01f, velIvar(1)) };
 
 	if (!_initialised) {
 		// try to initialise
-		_initialised =	initialise(velI, velIvar_constrained, true_airspeed);
+		_initialised = initialise(velI, velIvar_constrained, true_airspeed);
 		return;
 	}
 
@@ -162,24 +169,23 @@ WindEstimator::fuse_airspeed(uint64_t time_now, const float true_airspeed, const
 	const float HH0 = sqrtf(v_d * v_d + (v_e - w_e) * (v_e - w_e) + (v_n - w_n) * (v_n - w_n));
 	const float HH1 = k_tas / HH0;
 
-	matrix::Matrix<float, 1, 3> H_tas;
-	H_tas(0, 0) = HH1 * (-v_n + w_n);
-	H_tas(0, 1) = HH1 * (-v_e + w_e);
-	H_tas(0, 2) = HH0;
+	const Vector3f H_tas{HH1 * (-v_n + w_n), HH1 * (-v_e + w_e), HH0};
 
-	matrix::Matrix<float, 3, 1> K = _P * H_tas.transpose();
+	const float S = Scalarf(H_tas.transpose() * _P * H_tas) + _tas_var;
 
-	const matrix::Matrix<float, 1, 1> S = H_tas * _P * H_tas.transpose() + _tas_var;
+	const Vector3f K = _P * H_tas / S;
 
-	K /= (S._data[0][0]);
 	// compute innovation
-	const float airspeed_pred = _state(tas) * sqrtf((v_n - _state(w_n)) * (v_n - _state(w_n)) + (v_e - _state(w_e)) *
-				    (v_e - _state(w_e)) + v_d * v_d);
+
+	const Vector3f state = {_state(w_n), _state(w_n), 0.0f};
+	const Vector3f vel_diff = velI - state;
+
+	const float airspeed_pred = _state(tas) * vel_diff.length();
 
 	_tas_innov = true_airspeed - airspeed_pred;
 
 	// innovation variance
-	_tas_innov_var = S._data[0][0];
+	_tas_innov_var = S;
 
 	bool reinit_filter = false;
 	bool meas_is_rejected = false;
@@ -190,7 +196,7 @@ WindEstimator::fuse_airspeed(uint64_t time_now, const float true_airspeed, const
 
 	if (meas_is_rejected || reinit_filter) {
 		if (reinit_filter) {
-			_initialised =	initialise(velI, matrix::Vector2f(0.1f, 0.1f), true_airspeed);
+			_initialised = initialise(velI, Vector2f(0.1f, 0.1f), true_airspeed);
 		}
 
 		// we either did a filter reset or the current measurement was rejected so do not fuse
@@ -198,21 +204,19 @@ WindEstimator::fuse_airspeed(uint64_t time_now, const float true_airspeed, const
 	}
 
 	// apply correction to state
-	_state(w_n) += _tas_innov * K(0, 0);
-	_state(w_e) += _tas_innov * K(1, 0);
-	_state(tas) += _tas_innov * K(2, 0);
+	_state += _tas_innov * K;
 
 	// update covariance matrix
-	_P = _P - K * H_tas * _P;
+	_P -= K * H_tas * _P;
 
 	run_sanity_checks();
 }
 
 void
-WindEstimator::fuse_beta(uint64_t time_now, const matrix::Vector3f &velI, const matrix::Quatf &q_att)
+WindEstimator::fuse_beta(uint64_t time_now, const Vector3f &velI, const Quatf &q_att)
 {
 	if (!_initialised) {
-		_initialised =	initialise(velI, matrix::Vector2f(0.1f, 0.1f), velI.length());
+		_initialised = initialise(velI, Vector2f(0.1f, 0.1f), velI.length());
 		return;
 	}
 
@@ -247,21 +251,17 @@ WindEstimator::fuse_beta(uint64_t time_now, const matrix::Vector3f &velI, const 
 	float HB16 = (HB4 * (-HB10 + HB11 + HB9) + HB6 * (-HB1 + HB3) + v_d * (HB0 * q_att(1) + 2.0f * q_att(2) * q_att(3))) /
 		     (HB14 * HB14);
 
-	matrix::Matrix<float, 1, 3> H_beta;
-	H_beta(0, 0) = HB13 * HB16 + HB15 * (HB1 - HB3);
-	H_beta(0, 1) = HB15 * (HB12 - HB7 + HB8) + HB16 * HB5;
-	H_beta(0, 2) = 0;
+	const Vector3f H_beta {HB13 *HB16 + HB15 *(HB1 - HB3), HB15 *(HB12 - HB7 + HB8) + HB16 * HB5, 0};
 
 	// compute kalman gain
-	matrix::Matrix<float, 3, 1> K = _P * H_beta.transpose();
 
-	const matrix::Matrix<float, 1, 1> S = H_beta * _P * H_beta.transpose() + _beta_var;
+	const float S = Scalarf{H_beta.transpose() *_P * H_beta} + _beta_var;
 
-	K /= (S._data[0][0]);
+	const Vector3f K = _P * H_beta / S;
 
 	// compute predicted side slip angle
-	matrix::Vector3f rel_wind(velI(0) - _state(w_n), velI(1) - _state(w_e), velI(2));
-	matrix::Dcmf R_body_to_earth(q_att);
+	Vector3f rel_wind(velI(0) - _state(w_n), velI(1) - _state(w_e), velI(2));
+	Dcmf R_body_to_earth(q_att);
 	rel_wind = R_body_to_earth.transpose() * rel_wind;
 
 	if (fabsf(rel_wind(0)) < 0.1f) {
@@ -272,7 +272,7 @@ WindEstimator::fuse_beta(uint64_t time_now, const matrix::Vector3f &velI, const 
 	const float beta_pred = rel_wind(1) / rel_wind(0);
 
 	_beta_innov = 0.0f - beta_pred;
-	_beta_innov_var = S._data[0][0];
+	_beta_innov_var = S;
 
 	bool reinit_filter = false;
 	bool meas_is_rejected = false;
@@ -284,7 +284,7 @@ WindEstimator::fuse_beta(uint64_t time_now, const matrix::Vector3f &velI, const 
 
 	if (meas_is_rejected || reinit_filter) {
 		if (reinit_filter) {
-			_initialised =	initialise(velI, matrix::Vector2f(0.1f, 0.1f), velI.length());
+			_initialised =	initialise(velI, Vector2f(0.1f, 0.1f), velI.length());
 		}
 
 		// we either did a filter reset or the current measurement was rejected so do not fuse
@@ -292,12 +292,10 @@ WindEstimator::fuse_beta(uint64_t time_now, const matrix::Vector3f &velI, const 
 	}
 
 	// apply correction to state
-	_state(w_n) += _beta_innov * K(0, 0);
-	_state(w_e) += _beta_innov * K(1, 0);
-	_state(tas) += _beta_innov * K(2, 0);
+	_state += _beta_innov * K;
 
 	// update covariance matrix
-	_P = _P - K * H_beta * _P;
+	_P -= K * H_beta * _P;
 
 	run_sanity_checks();
 }

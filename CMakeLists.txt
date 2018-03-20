@@ -31,6 +31,7 @@
 #
 ############################################################################
 
+include_directories(.)
 px4_add_module(
 	MODULE lib__ecl
 	STACK_MAIN 6000
