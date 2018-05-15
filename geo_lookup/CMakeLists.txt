@@ -32,7 +32,7 @@
 ############################################################################
 
 add_library(ecl_geo_lookup
-	geo_mag_declination.cpp
+	geo_mag_declination.c
 	)
 add_dependencies(ecl_geo_lookup prebuild_targets)
 

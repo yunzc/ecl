@@ -32,7 +32,7 @@
 ############################################################################
 
 add_library(ecl_geo
-	geo.cpp
+	geo.c
 	)
 add_dependencies(ecl_geo prebuild_targets)
 
