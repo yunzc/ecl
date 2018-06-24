@@ -162,6 +162,10 @@ public:
 	virtual bool collect_imu(imuSample &imu) { return true; }
 
 	// set delta angle imu data
+	void setIMUData(const imuSample &imu_sample);
+
+	// legacy interface for compatibility (2018-06-24)
+	// TODO: delete
 	void setIMUData(uint64_t time_usec, uint64_t delta_ang_dt, uint64_t delta_vel_dt, float (&delta_ang)[3], float (&delta_vel)[3]);
 
 	// set magnetometer data
@@ -386,7 +390,7 @@ public:
 
 	void print_status();
 
-	static const unsigned FILTER_UPDATE_PERIOD_MS = 8;	// ekf prediction period in milliseconds - this should ideally be an integer multiple of the IMU time delta
+	static constexpr unsigned FILTER_UPDATE_PERIOD_MS = 8;	// ekf prediction period in milliseconds - this should ideally be an integer multiple of the IMU time delta
 
 protected:
 

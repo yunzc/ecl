@@ -46,31 +46,24 @@
 #include <mathlib/mathlib.h>
 
 // Accumulate imu data and store to buffer at desired rate
-void EstimatorInterface::setIMUData(uint64_t time_usec, uint64_t delta_ang_dt, uint64_t delta_vel_dt,
-				    float (&delta_ang)[3], float (&delta_vel)[3])
+void EstimatorInterface::setIMUData(const imuSample &imu_sample)
 {
 	if (!_initialised) {
-		init(time_usec);
+		init(imu_sample.time_us);
 		_initialised = true;
 	}
 
-	const float dt = math::constrain((time_usec - _time_last_imu) / 1e6f, 1.0e-4f, 0.02f);
+	const float dt = math::constrain((imu_sample.time_us - _time_last_imu) / 1e6f, 1.0e-4f, 0.02f);
 
-	_time_last_imu = time_usec;
+	_time_last_imu = imu_sample.time_us;
 
 	if (_time_last_imu > 0) {
 		_dt_imu_avg = 0.8f * _dt_imu_avg + 0.2f * dt;
 	}
 
 	// copy data
-	imuSample imu_sample_new;
-	imu_sample_new.delta_ang = Vector3f(delta_ang);
-	imu_sample_new.delta_vel = Vector3f(delta_vel);
+	imuSample imu_sample_new = imu_sample;
 
-	// convert time from us to secs
-	imu_sample_new.delta_ang_dt = delta_ang_dt / 1e6f;
-	imu_sample_new.delta_vel_dt = delta_vel_dt / 1e6f;
-	imu_sample_new.time_us = time_usec;
 	_imu_ticks++;
 
 	// calculate a metric which indicates the amount of coning vibration
@@ -165,6 +158,21 @@ void EstimatorInterface::setIMUData(uint64_t time_usec, uint64_t delta_ang_dt, u
 		_imu_updated = false;
 
 	}
+}
+
+void EstimatorInterface::setIMUData(uint64_t time_usec, uint64_t delta_ang_dt, uint64_t delta_vel_dt,
+				    float (&delta_ang)[3], float (&delta_vel)[3])
+{
+	imuSample imu_sample_new;
+	imu_sample_new.delta_ang = Vector3f(delta_ang);
+	imu_sample_new.delta_vel = Vector3f(delta_vel);
+
+	// convert time from us to secs
+	imu_sample_new.delta_ang_dt = delta_ang_dt / 1e6f;
+	imu_sample_new.delta_vel_dt = delta_vel_dt / 1e6f;
+	imu_sample_new.time_us = time_usec;
+
+	setIMUData(imu_sample_new);
 }
 
 void EstimatorInterface::setMagData(uint64_t time_usec, float (&data)[3])
