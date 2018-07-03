@@ -42,7 +42,7 @@
 #include "common.h"
 #include "RingBuffer.h"
 
-#include <geo/geo.h>
+#include <ecl/geo/geo.h>
 #include <matrix/math.hpp>
 #include <mathlib/mathlib.h>
 

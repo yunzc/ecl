@@ -62,8 +62,8 @@
 
 #include <mathlib/mathlib.h>
 #include <matrix/math.hpp>
-#include <geo/geo.h>
-#include <ecl.h>
+#include <ecl/geo/geo.h>
+#include <ecl/ecl.h>
 
 /**
  * L1 Nonlinear Guidance Logic
